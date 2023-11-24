@@ -55,7 +55,6 @@ class ApartmentScraper:
         # urls = [urllib.parse.urljoin(url, str(page) + '/') for page in range(page_range+1) if page > 0]
         urls = [urllib.parse.urljoin(url, str(page) + '/') for page in range(2) if page > 0]
         tasks = []
-        print(urls)
         for url in urls:
             task = asyncio.create_task(self.fetch(url))
             tasks.append(task)
@@ -87,9 +86,11 @@ class ApartmentScraper:
 
     def parse_data(self, detail_htmls):
         for html in detail_htmls[1:2]:
-            print(html)
-            listing = {'id': None, 'url': None, }
+            listing = {'id': '', 'name': '', 'url': '', 'phone': '', 'city': '', 'state': '', 'zip': '',
+                       'address': '', 'country': '', 'DMA': '', 'latitude': '', 'longitude': ''}
+            unit = {'id': '', 'key': '', }
             tree = HTMLParser(html)
+            # print(tree.html)
             scripts = tree.css('script')
             for script in scripts:
                 if 'ProfileStartup' in script.text(strip=True):
@@ -100,15 +101,30 @@ class ApartmentScraper:
                     cleared_data = re.sub(sub_pattern, r'"\1": ', match.group(1).replace("'", '"').replace("geo:", "geo: ").replace("isMF:", "isMF: "))
                     pattern = r',\s*}'
                     json_data = re.sub(pattern, '}', cleared_data)
-                    print(json_data)
                     parsed_data = json.loads(json_data)
                     pretified_json = json.dumps(parsed_data, indent=2)
                     print(pretified_json)
                     break
 
-            # json_data = json.loads(tree.css_first('script[type="application/ld+json"]').text(strip=True))
-            # pretified_json = json.dumps(json_data, indent=2)
-            # print(pretified_json)
+            listing['id'] = parsed_data['listingId']
+            listing['name'] = parsed_data['listingName']
+            listing['url'] = tree.css_first('div.header-switch-language-wrapper.mortar-wrapper > a').attributes.get('href', '')
+            listing['phone'] = parsed_data['phoneNumber']
+            listing['city'] = parsed_data['listingCity']
+            listing['state'] = parsed_data['listingState']
+            listing['zip'] = parsed_data['listingZip']
+            listing['address'] = parsed_data['listingAddress']
+            listing['country'] = parsed_data['listingCountry']
+            listing['DMA'] = parsed_data['listingDMA']
+            listing['latitude'] = parsed_data['location']['latitude']
+            listing['longitude'] = parsed_data['location']['longitude']
+            print(listing)
+
+            for rental in parsed_data['rentals']:
+                unit['id'] = listing['id']
+                unit['key'] = rental['RentalKey']
+                print(unit)
+
 
 
     def main(self):
