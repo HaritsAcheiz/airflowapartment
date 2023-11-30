@@ -1,6 +1,9 @@
 import re
 import json
 import urllib.parse
+from time import sleep
+
+import httpx
 from httpx import Client, AsyncClient
 from selectolax.parser import HTMLParser
 from dataclasses import dataclass
@@ -33,7 +36,7 @@ class ApartmentScraper:
         retry = 0
         while retry < 3:
             try:
-                with Client(headers=headers) as client:
+                with Client(headers=headers, timeout=15) as client:
                     response = client.get(url)
                 if response.status_code != 200:
                     response.raise_for_status()
@@ -84,11 +87,30 @@ class ApartmentScraper:
         detail_htmls = await asyncio.gather(*tasks)
         return detail_htmls
 
+    def get_images(self, listing_key, xawc):
+        images_url = 'https://www.apartments.com/services/property/mediagallery/render'
+
+        json_payload = {"ListingKey":f"{listing_key}","HasViewFromUnit": False,"UnitNumber":""}
+
+        with Client() as client:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0',
+                'Content-Type': 'application/json',
+                'X_AWC_TOKEN': xawc
+            }
+            response = client.post(headers=headers, url=images_url, json=json_payload)
+
+        if response.status_code != 200:
+            response.raise_for_status()
+
+        return response.json()
+
     def parse_data(self, detail_htmls):
         for html in detail_htmls[1:2]:
             listing = {'id': '', 'name': '', 'url': '', 'phone': '', 'city': '', 'state': '', 'zip': '',
                        'address': '', 'country': '', 'DMA': '', 'latitude': '', 'longitude': ''}
             unit = {'id': '', 'key': '', }
+            image = {'id': '', 'key': '', 'url': ''}
             tree = HTMLParser(html)
             # print(tree.html)
             scripts = tree.css('script')
@@ -103,7 +125,7 @@ class ApartmentScraper:
                     json_data = re.sub(pattern, '}', cleared_data)
                     parsed_data = json.loads(json_data)
                     pretified_json = json.dumps(parsed_data, indent=2)
-                    print(pretified_json)
+                    # print(pretified_json)
                     break
 
             listing['id'] = parsed_data['listingId']
@@ -120,12 +142,39 @@ class ApartmentScraper:
             listing['longitude'] = parsed_data['location']['longitude']
             print(listing)
 
-            for rental in parsed_data['rentals']:
+            rentals = parsed_data['rentals']
+            for rental in rentals:
                 unit['id'] = listing['id']
                 unit['key'] = rental['RentalKey']
+                try:
+                    unit['number'] = rental['UnitNumber']
+                except:
+                    unit['number'] = ''
+                unit['name'] = rental['Name']
                 print(unit)
 
+            for script in scripts:
+                if 'antiWebCrawlerToken' in script.text(strip=True):
+                    raw_data = script.text()
+                    pattern = r'antiWebCrawlerToken:\s*\'([^\']*?)\''
+                    match = re.search(pattern=pattern, string=raw_data)
+                    xawc = match.group(1)
+                    break
 
+            json_images = self.get_images(listing_key=listing['id'], xawc=xawc)
+            # print(json_images)
+
+            image_tree = HTMLParser(json_images['Photos'])
+            images = []
+            images_element = image_tree.css('li')
+            # print(len(images_element))
+            for item in images_element:
+                image['id'] = parsed_data['listingId']
+                image['key'] = item.attributes.get('id')
+                image['url'] = item.css_first('div.lazy.backgroundImageWrapper').attributes.get('data-img-src')
+                images.append(image.copy())
+
+            print(images)
 
     def main(self):
         loc = 'tucson-az'
