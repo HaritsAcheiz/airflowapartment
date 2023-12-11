@@ -107,12 +107,22 @@ class ApartmentScraper:
 
     def parse_data(self, detail_htmls):
         for html in detail_htmls[1:2]:
-            listing = {'id': '', 'name': '', 'url': '', 'phone': '', 'city': '', 'state': '', 'zip': '',
-                       'address': '', 'country': '', 'DMA': '', 'latitude': '', 'longitude': ''}
-            unit = {'id': '', 'key': '', }
-            image = {'id': '', 'key': '', 'url': ''}
+
+            listing = {'id': '', 'name': '', 'min_rent': '', 'max_rent': '', 'url': '', 'phone': '', 'city': '', 'state': '', 'zip': '',
+                       'address': '', 'country': '', 'DMA': '', 'latitude': '', 'longitude': '', 'property_type': '',
+                       'neighborhood': '', 'county': '', 'property_website': '', 'specialities': '', 'vendor_name': ''
+                       }
+            unit = {'listing_id': '', 'id': '', 'number': '', 'name': '', 'beds': '', 'baths': '', 'max_rent': '',
+                    'deposit': '', 'squarefeet': 'SquareFeet', 'max_squarefeet': '', 'available_date_text': '',
+                    'available_date': '', 'availability_status': '', 'unit_count': '', 'isnew': '',
+                    'speciality_type': '', 'pricing_type': '', 'description': '', 'image_uri': '', 'amenities': ''}
+
+            image = {'listing_id': '', 'id': '', 'image_alt': '', 'url': ''}
+
+            review = {'listing_id': '', 'id': '', 'rating': '', 'title': '', 'content': '', 'date': ''}
+
             tree = HTMLParser(html)
-            # print(tree.html)
+            print(tree.html)
             scripts = tree.css('script')
             for script in scripts:
                 if 'ProfileStartup' in script.text(strip=True):
@@ -125,11 +135,13 @@ class ApartmentScraper:
                     json_data = re.sub(pattern, '}', cleared_data)
                     parsed_data = json.loads(json_data)
                     pretified_json = json.dumps(parsed_data, indent=2)
-                    # print(pretified_json)
+                    print(pretified_json)
                     break
 
             listing['id'] = parsed_data['listingId']
             listing['name'] = parsed_data['listingName']
+            listing['min_rent'] = parsed_data['listingMinRent']
+            listing['max_rent'] = parsed_data['listingMaxRent']
             listing['url'] = tree.css_first('div.header-switch-language-wrapper.mortar-wrapper > a').attributes.get('href', '')
             listing['phone'] = parsed_data['phoneNumber']
             listing['city'] = parsed_data['listingCity']
@@ -140,18 +152,59 @@ class ApartmentScraper:
             listing['DMA'] = parsed_data['listingDMA']
             listing['latitude'] = parsed_data['location']['latitude']
             listing['longitude'] = parsed_data['location']['longitude']
+            listing['property_type'] = parsed_data['propertyType']
+            listing['neighborhood'] = parsed_data['listingNeighborhood']
+            listing['county'] = parsed_data['listingCounty']
+            listing['property_website'] = parsed_data['listHubListingUri']
+            listing['specialities'] = parsed_data['listingSpecialties']
+            listing['vendor_name'] = tree.css_first('div.vendorName').text(strip=True)
             print(listing)
 
+            review_element = tree.css('div.reviewContainerWrapper')
+            reviews = []
+            for item in review_element:
+                review['listing_id'] = listing['id']
+                review['id'] = item.css_first('div.reviewContainer').attributes.get('data-reviewkey', '')
+                review['rating'] = item.css_first('span').attributes.get('content', '')
+                review['title'] = item.css_first('h3').text(strip=True)
+                review['content'] = item.css_first('p').text(strip=True)
+                reviews.append(review)
+            print(reviews)
+
             rentals = parsed_data['rentals']
+            units = []
             for rental in rentals:
-                unit['id'] = listing['id']
-                unit['key'] = rental['RentalKey']
+                unit['listing_id'] = listing['id']
+                unit['id'] = rental['RentalKey']
                 try:
                     unit['number'] = rental['UnitNumber']
                 except:
                     unit['number'] = ''
                 unit['name'] = rental['Name']
-                print(unit)
+                unit['beds'] = rental['Beds']
+                unit['baths'] = rental['Baths']
+                unit['max_rent'] = rental['MaxRent']
+                try:
+                    unit['deposit'] = rental['Deposit']
+                except:
+                    unit['deposit'] = ''
+                unit['squarefeet'] = rental['SquareFeet']
+                unit['max_squarefeet'] = rental['MaxSquareFeet']
+                unit['available_date_text'] = rental['AvailableDateText']
+                unit['available_date'] = rental['AvailableDate']
+                unit['availability_status'] = rental['AvailabilityStatus']
+                unit['unit_count'] = rental['UnitCount']
+                unit['isnew'] = rental['IsNew']
+                unit['specialty_type'] = rental['SpecialtyType']
+                unit['pricing_type'] = rental['PricingType']
+                unit['description'] = rental['Description']
+                try:
+                    unit['image_uri'] = rental['ImageUri']
+                except:
+                    unit['image_uri'] = ''
+                unit['interior_amenities'] = json.dumps(rental['InteriorAmenities'])
+                units.append(unit)
+            print(units)
 
             for script in scripts:
                 if 'antiWebCrawlerToken' in script.text(strip=True):
@@ -169,8 +222,9 @@ class ApartmentScraper:
             images_element = image_tree.css('li')
             # print(len(images_element))
             for item in images_element:
-                image['id'] = parsed_data['listingId']
-                image['key'] = item.attributes.get('id')
+                image['listing_id'] = parsed_data['listingId']
+                image['id'] = item.attributes.get('id')
+                image['img_alt'] = item.css_first('div.lazy.backgroundImageWrapper').attributes.get('data-img-alt')
                 image['url'] = item.css_first('div.lazy.backgroundImageWrapper').attributes.get('data-img-src')
                 images.append(image.copy())
 
